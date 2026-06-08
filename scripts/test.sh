@@ -34,14 +34,27 @@ else
     exit 1
 fi
 
+# Image to test against; can be overridden via TEST_IMAGE env var
+test_image="${TEST_IMAGE:-akamai/shell}"
+
 # Based on the platform, choose the correct local image and get the container id
-image=akamai/shell:local-"${platform}"
+image="${test_image}:local-${platform}"
 info starting test container with tag "${image}"
 # In case the image is not found, fail rather than pull remote image
 containerId=$(docker run -d --name test --pull=never "${image}" sleep 3600)
 
-# Run the tests
-docker cp ./test.bats "${containerId}":/test.bats
+# Test files to run; can be overridden via TEST_FILES env var (comma-separated)
+test_files="${TEST_FILES:-test.bats}"
+
+# Copy each test file to the container and build the bats argument list
+bats_args=""
+IFS=',' read -ra test_file_list <<< "${test_files}"
+for f in "${test_file_list[@]}"; do
+  f=$(echo "$f" | xargs)  # trim surrounding whitespace
+  docker cp "./${f}" "${containerId}":/"${f##*/}"
+  bats_args="${bats_args} /${f##*/}"
+done
+
 docker exec -i "${containerId}" bash <<EOF
 set -e
 
@@ -50,5 +63,5 @@ git clone https://github.com/bats-core/bats-core.git
 cd bats-core
 ./install.sh /usr/local
 cd /
-bats /test.bats
+bats ${bats_args}
 EOF
