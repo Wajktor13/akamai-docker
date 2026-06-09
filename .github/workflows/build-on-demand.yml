@@ -1,0 +1,61 @@
+name: Build On Demand
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: |
+          Comma-separated variants to build.
+          Leave empty to build all variants from the variants file.
+          Example: "cli appsec, cli dns" builds appsec and dns.
+        required: false
+        default: ''
+      tests:
+        description: |
+          Comma-separated list of tests to run (matched by name substring).
+          Leave empty to run all tests.
+          Use "none" to skip tests entirely.
+          Example: "appsec, dns" runs only tests whose name contains appsec or dns.
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build variants
+        env:
+          VARIANTS: ${{ inputs.variants }}
+        run: |
+          if [ -z "$VARIANTS" ]; then
+            echo "No variants specified — building all from variants file"
+            ./scripts/build-all.sh
+          else
+            echo "Building selected variant chains"
+            IFS=',' read -ra chains <<< "$VARIANTS"
+            for chain in "${chains[@]}"; do
+              chain=$(echo "$chain" | xargs)
+              [ -n "$chain" ] && ./scripts/build-chain.sh $chain
+            done
+          fi
+        shell: bash
+
+      - name: Run tests
+        if: ${{ inputs.tests != 'none' }}
+        env:
+          TESTS: ${{ inputs.tests }}
+        run: |
+          if [ -n "$TESTS" ]; then
+            # Convert comma-separated list to pipe-separated regex, stripping whitespace
+            export BATS_FILTER=$(echo "$TESTS" | sed 's/[[:space:]]*,[[:space:]]*/|/g')
+          fi
+          ./scripts/test.sh
+        shell: bash

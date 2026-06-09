@@ -50,5 +50,5 @@ git clone https://github.com/bats-core/bats-core.git
 cd bats-core
 ./install.sh /usr/local
 cd /
-bats /test.bats
+bats ${BATS_FILTER:+--filter "${BATS_FILTER}"} /test.bats
 EOF
